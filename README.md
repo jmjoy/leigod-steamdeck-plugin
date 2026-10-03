@@ -65,6 +65,20 @@ sudo systemctl enable --now leigod
 
 改配置后 `sudo systemctl restart leigod`。
 
+## 容器部署(可选)
+
+不想在宿主装 systemd 单元/装包时, 可用 Docker Compose 跑**同一套脚本**:
+
+```bash
+docker compose up -d --build
+```
+
+容器版把 `leigod.service` 的加固逐条翻译成 Docker 原语(私有 pid 命名空间、
+能力收敛到 `NET_ADMIN`+`NET_RAW`、伪装挂载、`KillMode=control-group` 等),
+`run.sh` / `ensure-wlan0.sh` / `sslh-guard.cfg` / `device.conf` 与 AUR 版共用
+同一份文件; 绑定 token 落在 `./data/config` 上, 容器重建不会掉绑定。网络仍与
+宿主共享(功能必需)。完整说明、差异与排障见 [DOCKER.md](DOCKER.md)。
+
 ## 故障排查
 
 遇到问题先查 [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
@@ -108,6 +122,9 @@ makepkg --printsrcinfo > .SRCINFO
 仓库文件:PKGBUILD、leigod-plugin.install、leigod.service、run.sh、
 ensure-wlan0.sh、leigod.conf(modules-load.d),以及各配置/伪装文件
 (accelerator.ini、acc_version.ini、sslh-guard.cfg、device.conf、fake_*、
-mirror.conf.example)与 README、.SRCINFO;远程二进制(acc-gw.router.amd64 /
-xdb / 官方守护脚本)由 source 数组从镜像下载并以 pinned sha256 校验,不入库。
+mirror.conf.example)与 README、.SRCINFO;容器版另有 Dockerfile、
+docker-compose.yml、docker/(entrypoint、fetch-upstream、patch-monitor、
+cleanup)与 DOCKER.md,构建期同样以"下载 + pinned sha256 校验"获取远程文件。
+远程二进制(acc-gw.router.amd64 / xdb / 官方守护脚本)由 source 数组从镜像
+下载并以 pinned sha256 校验,不入库。
 提交 AUR 前建议跑 `namcap PKGBUILD` 做最终检查。

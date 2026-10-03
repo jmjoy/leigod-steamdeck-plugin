@@ -7,12 +7,12 @@
 
 pkgname=leigod-steamdeck-plugin
 pkgver=1.2.2.15
-pkgrel=4
+pkgrel=5
 pkgdesc="Leigod accelerator SteamDeck plugin on generic Linux via systemd SteamDeck emulation"
 arch=('x86_64')
 url="https://www.leigod.com"
 license=('custom:proprietary')
-depends=('curl' 'iproute2' 'iptables' 'ipset' 'sslh')
+depends=('curl' 'iproute2' 'iptables' 'ipset' 'sslh' 'iputils')
 install='leigod-plugin.install'
 options=('!strip' '!debug')
 backup=('etc/leigod/sslh-guard.cfg' 'etc/leigod/device.conf')
@@ -78,6 +78,17 @@ prepare() {
         "$srcdir/steamdeck_acc_monitor.sh"
     grep -q "^trap .*Daemon stopped" "$srcdir/steamdeck_acc_monitor.sh" || {
         echo 'error: patch steamdeck_acc_monitor.sh (term trap) failed' >&2
+        return 1
+    }
+
+    # 官方脚本的空行判据 [ -z "$process_name" ] 漏掉"只有空白"的行: PROCESS_DATA
+    # 是多行字符串, 末尾必有一行空白, 于是每 5 秒往日志写一条进程名为空的
+    # "Process not running: , starting..." / "Failed to start: ", 淹没真正的故障
+    # 信息。改成按"是否含非空白字符"判断(与 docker/patch-monitor.sh 第 4 条一致)。
+    sed -i 's|\[ -z "\$process_name" \] && continue|case "$process_name" in *[![:space:]]*) ;; *) continue ;; esac|' \
+        "$srcdir/steamdeck_acc_monitor.sh"
+    grep -q 'case "\$process_name" in \*\[!\[:space:\]\]\*)' "$srcdir/steamdeck_acc_monitor.sh" || {
+        echo 'error: patch steamdeck_acc_monitor.sh (blank line skip) failed' >&2
         return 1
     }
 }

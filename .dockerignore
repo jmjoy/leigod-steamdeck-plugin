@@ -1,0 +1,13 @@
+# 构建上下文只需封装所需的仓库文件; 宿主状态、构建产物与上游二进制都不进上下文。
+# 注意: Dockerfile 需要的文件(run.sh / ensure-wlan0.sh / sslh-guard.cfg /
+# device.conf / accelerator.ini / acc_version.ini / fake_* / docker/)不要排除。
+.git
+.gitignore
+data/
+src/
+pkg/
+*.pkg.tar.zst
+*.log
+acc-gw.router.amd64
+ipdatacloud_country.xdb
+steamdeck_acc_monitor.sh

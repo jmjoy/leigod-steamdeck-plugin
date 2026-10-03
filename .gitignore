@@ -1,5 +1,7 @@
 src/
 pkg/
+# 容器版的宿主状态目录(绑定 token 与日志), 不入库
+data/
 *.pkg.tar.zst
 *.log
 acc-gw.router.amd64

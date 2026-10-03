@@ -81,3 +81,38 @@
 - **修复**:锁文件随沙箱私有 tmpfs 存亡(单元不 bind 宿主 `/run`)。
   完整定位过程见
   [systemd-migration-troubleshooting.md](systemd-migration-troubleshooting.md) §5。
+
+## #8 能绑定成功,但 App 识别不到 SteamDeck(设备对云端一直离线)
+
+> 本节是 **Docker 版专有**的根因;AUR/systemd 版因 Arch 的 `base` 组自带
+> `iputils` 而天然不触发,故历史上一直被记成 TROUBLESHOOTING #4 的"云端不在线,
+> 但不影响本机使用"。容器版下它确实会让 App 找不到设备。
+
+- **特征**:
+  - 手机 App 能走完绑定(`newBindRouter` 成功拿到 token),之后一直"识别不到
+    SteamDeck"/设备离线;但 LAN 侧一切正常 —— UDP 6066 发现应答
+    `(model=SteamDeck, sn=…, ip=…, bound=true)`,`getRouterInfo` 的
+    `token:"<md5(token)>"` 也正确(bound 判据没问题)。
+  - `grep 'current network is offline' data/log/web_api.log` —— **每秒一条**刷屏;
+    `getNetworkState` 恒为 `state:4`。
+  - `tcpdump -ni any 'udp and port 5588'` 看不到设备发往
+    `route-turn.xxghh.biz:5588` 的 64B/10s keepalive。
+- **根因**:容器镜像里**没有 `ping`**(Debian slim 不含 iputils,而 Arch 的
+  `iputils` 属于 `base` 组)。插件用 `ping -c 1 -W 1 223.5.5.5`(约 1 次/秒,地址
+  来自云端 `NetOption` 的 resolver 配置)判定"网络是否在线";判定失败时
+  `turn_udp_thread_func` 每秒打一条 `current network is offline` 并**跳过** TURN
+  UDP 注册/keepalive,云端因此把设备记为离线。绑定能成功只是因为启动初期 ws/turn
+  通道短暂可用过(`on_open_func` → 约 1 分钟后 `on_close_func` 再没重连)。
+- **判据**:`docker compose exec leigod-steamdeck-plugin command -v ping`
+  返回空即命中;`docker compose exec … ping -c 1 -W 1 223.5.5.5` 应通
+  (该地址在大陆可达;不通是另一类网络问题)。
+- **修复**:镜像装 `iputils-ping`(本仓库 Dockerfile 已加,顺带 `iputils-arping`);
+  `docker compose build --pull && docker compose up -d`。宿主直装版请确认
+  `iputils` 已装(本仓库 PKGBUILD `depends` 已显式声明)。
+- **验证**:重启后 `current network is offline` 不再出现,且
+  `tcpdump -ni any 'udp and port 5588'` 能看到 64B 出/入成对(每 10 秒一组)。
+- **顺带**:同一次定位还修掉了官方 monitor 脚本的空行判据缺陷 ——
+  `PROCESS_DATA` 末尾必有一行空白,而 `[ -z "$process_name" ]` 漏掉"只有空白"
+  的行,于是 `steamdeck_acc_monitor.log` 每 5 秒写一条进程名为空的
+  `Process not running: , starting...` / `Failed to start: `。补丁见
+  `docker/patch-monitor.sh` 第 4 条。

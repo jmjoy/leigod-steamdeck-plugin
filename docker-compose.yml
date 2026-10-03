@@ -1,0 +1,74 @@
+# 雷神加速器(Leigod) SteamDeck 插件 —— 容器编排
+# ============================================================================
+# 用法见 DOCKER.md; 每条加固与 leigod.service 的对应关系见 Dockerfile 头部。
+# 最常用:
+#   docker compose up -d --build     # 构建并启动
+#   docker compose logs -f           # 跟随容器 stdout/stderr
+#   docker compose restart           # 改完 ./device.conf / ./sslh-guard.cfg 后重启
+#   docker compose down              # 停止(./data 里的绑定状态保留)
+name: leigod-steamdeck-plugin
+
+services:
+  leigod:
+    build:
+      context: .
+      args:
+        LEIGOD_MIRROR: ${LEIGOD_MIRROR:-http://119.3.40.126}
+        # 上游发新版导致 sha256 校验失败时: 先核对新哈希, 再改 Dockerfile 里的
+        # SHA_* 默认值(或 docker compose build --build-arg SHA_ACC=...);
+        # 临时放行可打开下面这行, 构建日志会打印实际哈希。
+        # SKIP_VERIFY: "1"
+    image: leigod-steamdeck-plugin:local
+    container_name: leigod-steamdeck-plugin
+
+    # 必须在宿主网络命名空间里: 插件靠 tun_PC + 策略路由 + iptables -t mangle
+    # 加速本机流量, 这些规则只有落在宿主 netns 才生效(与 AUR 版一致: 共享网络,
+    # 插件以 root 改宿主路由表/iptables/ipset)。代价是网络层没有额外隔离,
+    # Docker 在这里的收益是"宿主零安装 + 跨发行版分发"。
+    network_mode: host
+
+    # 能力收敛到 systemd 单元的同两项, 其余全部丢弃
+    cap_drop: [ALL]
+    cap_add:
+      - NET_ADMIN   # dummy wlan0 / tun_PC / 路由 / iptables / ipset
+      - NET_RAW     # 静态链接的 libpcap 用原始套接字做设备识别
+    security_opt:
+      - no-new-privileges:true
+    devices:
+      - /dev/net/tun:/dev/net/tun
+
+    # /var/run 必须随容器启动销毁: monitor 的单例锁写的是 pid 命名空间里的 pid,
+    # 一旦落进持久层, 新实例 kill -0 会命中自身并无限重启(MIGRATION.md 5)。
+    # entrypoint 起跑前还会再 rm 一次兜底。
+    tmpfs:
+      - /run:mode=0755
+
+    init: true                 # tini 回收僵尸(pid 1 职责), 信号仍转发给 entrypoint
+    restart: no                # 等价 Restart=always; 主动 down 后不再拉起
+    stop_grace_period: 30s     # entrypoint 广播 SIGTERM + 等加速程序清理 tun/iptables
+
+    working_dir: /home/deck/leigod
+
+    volumes:
+      # ---- 可写持久区(等价 unit 的 BindPaths=/opt/leigod) ----
+      # accelerator.ini 存绑定 token/user_id: 容器重建、镜像升级都不会掉绑定
+      - ./data/config:/opt/leigod/config
+      # 官方进程日志(= 容器内 /tmp/acc/log), run.sh 的日志守护在 50MiB 处清零
+      - ./data/log:/opt/leigod/log
+
+      # ---- SteamDeck 身份伪装(等价 unit 的 BindReadOnlyPaths) ----
+      - ./fake_os_release:/etc/os-release:ro
+      - ./fake_product_name:/sys/class/dmi/id/product_name:ro
+
+      # ---- 设备身份(SN)= 宿主 machine-id 派生, 跨重启稳定(unit 同名白名单) ----
+      - /etc/machine-id:/etc/machine-id:ro
+
+      # ---- 用户可编辑配置(等价于 AUR 的 /etc/leigod, 改完 restart 生效) ----
+      - ./sslh-guard.cfg:/etc/leigod/sslh-guard.cfg:ro
+      - ./device.conf:/etc/leigod/device.conf:ro
+
+    # 可选环境变量:
+    # environment:
+    #   LEIGOD_RESET_WLAN0: "0"   # 不重建上次遗留的 dummy wlan0(默认每次启动重建)
+    #   LEIGOD_STOP_GRACE: "8"    # 收到停止信号后等多少秒再 SIGKILL 残余进程
+    #   TZ: Asia/Shanghai         # 日志时间戳时区(镜像内含 tzdata, 默认 UTC)

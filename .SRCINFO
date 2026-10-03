@@ -1,7 +1,7 @@
 pkgbase = leigod-steamdeck-plugin
 	pkgdesc = Leigod accelerator SteamDeck plugin on generic Linux via systemd SteamDeck emulation
 	pkgver = 1.2.2.15
-	pkgrel = 4
+	pkgrel = 5
 	url = https://www.leigod.com
 	install = leigod-plugin.install
 	arch = x86_64
@@ -11,6 +11,7 @@ pkgbase = leigod-steamdeck-plugin
 	depends = iptables
 	depends = ipset
 	depends = sslh
+	depends = iputils
 	options = !strip
 	options = !debug
 	backup = etc/leigod/sslh-guard.cfg
