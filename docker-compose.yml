@@ -14,10 +14,12 @@ services:
       context: .
       args:
         LEIGOD_MIRROR: ${LEIGOD_MIRROR:-http://119.3.40.126}
-        # 上游发新版导致 sha256 校验失败时: 先核对新哈希, 再改 Dockerfile 里的
-        # SHA_* 默认值(或 docker compose build --build-arg SHA_ACC=...);
-        # 临时放行可打开下面这行, 构建日志会打印实际哈希。
-        # SKIP_VERIFY: "1"
+        # 默认不校验哈希(上游在同一版本号下就地换文件, 见 DOCKER.md
+        #「构建参数与哈希策略」); 需要钉版本时按环境变量传入, 例:
+        #   SHA_ACC=<sha256> docker compose build
+        SHA_ACC: ${SHA_ACC:-}
+        SHA_XDB: ${SHA_XDB:-}
+        SHA_MONITOR: ${SHA_MONITOR:-}
     image: leigod-steamdeck-plugin:local
     container_name: leigod-steamdeck-plugin
 

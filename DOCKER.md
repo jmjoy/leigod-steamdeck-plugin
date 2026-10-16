@@ -26,10 +26,12 @@ Compose 跑。宿主零安装(不装 systemd 单元、不用包管理器), 手�
 | `fake_os_release` `fake_product_name` `fake_version` | `/etc/os-release` `/usr/lib/os-release` `/etc/version` | SteamDeck 身份伪装 |
 
 上游闭源文件(`acc-gw.router.amd64` / `ipdatacloud_country.xdb` /
-`steamdeck_acc_monitor.sh`)在构建期从 `LEIGOD_MIRROR` 下载, 用 PKGBUILD 里
-pin 死的 sha256 逐个校验后落位 `/opt/leigod`, 并打上与 PKGBUILD `prepare()`
-相同的补丁(web 端口 5588→5589、启用 TERM trap), 另加 Debian 特有补丁
-(dash 不认 `test` 的 `==`)与一条空白行判据修正, 见 `docker/patch-monitor.sh`。
+`steamdeck_acc_monitor.sh`)在构建期从 `LEIGOD_MIRROR` 下载后落位 `/opt/leigod`,
+**默认不校验哈希**(理由与钉版本办法见下文「构建参数与哈希策略」; 注意 AUR 侧
+PKGBUILD 仍是 pinned sha256, 两边策略不同), 并打上本仓库维护的 monitor 补丁
+(web 端口 5588→5589、dash 不认 `test` 的 `==`、空白行判据), 见
+`docker/patch-monitor.sh`。每条补丁按"结果"判定: 上游新版已自行修好的项(实测新版
+monitor 已原生启用 TERM trap)自动跳过, 只有锚点彻底消失才报错。
 
 **运行期依赖**(镜像内 `apt-get install`): `bash` `coreutils` `procps`
 `iproute2` `iptables` `ipset` `sslh` `ca-certificates`, 以及 **`iputils-ping`
@@ -144,21 +146,32 @@ sudo docker/cleanup.sh -y                                # 顺带删除 dummy wl
 7. **僵尸进程**: compose 打开了 `init: true`, 由 tini 回收(这一点比 systemd 版更好,
    systemd 版因为 monitor 是 pid 1, 孤儿会滞留)。
 
-## 构建参数
+## 构建参数与哈希策略
 
 ```bash
-docker compose build \
-  --build-arg LEIGOD_MIRROR=http://119.3.40.126 \
-  --build-arg SHA_ACC=<sha256> --build-arg SHA_XDB=<sha256> --build-arg SHA_MONITOR=<sha256>
+docker compose build                                      # 默认: 不校验哈希, 日志打印实际 sha256
+docker compose build --build-arg LEIGOD_MIRROR=http://<镜像>
+SHA_ACC=<sha256> SHA_MONITOR=<sha256> docker compose build # 临时钉版本(只钉要钉的文件)
 ```
 
 | 参数 | 默认 | 说明 |
 |---|---|---|
-| `LEIGOD_MIRROR` | `http://119.3.40.126` | 上游下载基址(明文 HTTP, 无签名) |
-| `SHA_ACC` / `SHA_XDB` / `SHA_MONITOR` | PKGBUILD 前 3 项 | 三个远程文件的 sha256, 换镜像必须同步改 |
-| `SKIP_VERIFY` | `0` | 置 `1` 跳过校验(构建日志打印实际哈希), 仅用于核对新版本 |
+| `LEIGOD_MIRROR` | `http://119.3.40.126` | 上游下载基址(明文 HTTP, 无签名); `route-turn.xxghh.biz` 是同一台机器的域名 |
+| `SHA_ACC` / `SHA_XDB` / `SHA_MONITOR` | 空 | 留空 = 不校验(默认); 非空 = 该文件必须与该 sha256 一致, 否则构建失败 |
 
-上游发新版会让构建在校验处失败并打印 want/got —— 这是设计如此(哈希是唯一信任锚点)。
+**为什么不默认校验**: 上游是明文 HTTP 且没有签名, 哈希原本是唯一的信任锚点; 但它
+**在同一版本号下就地更新文件** —— 实测同为 `1.2.2.15` 时, `acc-gw.router.amd64` 与
+`steamdeck_acc_monitor.sh` 的内容都已和首次打包时不同。钉死的哈希只会在每次上游更新
+后让构建失败, 而运行期的 `acc_upgrade_monitor` 本来就会自行替换这些文件 —— "镜像里
+烤进的二进制版本"从来就不是能锁住的东西。现在的做法:
+
+- 构建日志打印每个文件的实际 sha256, 可直接复制来钉版本;
+- 想锁定某次构建: 传 `SHA_*` 即恢复硬校验(want/got 不符就失败);
+- 没有哈希兜底, 构建期另做最低限度完整性检查: 主程序必须是 x86-64 ELF(而不是错误页),
+  monitor 必须带官方锚点, 且补丁后脚本里不再有 dash 不认的 `==`(见 `docker/patch-monitor.sh`)。
+
+代价说清楚: **首次下载的内容无法被验证**(TOFU, 信任首次获取)。要真正的完整性保证,
+请在自建镜像站上放这几个文件, 用 `LEIGOD_MIRROR` 指向它并同时传 `SHA_*`。
 
 ## 排障
 

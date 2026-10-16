@@ -124,7 +124,8 @@ ensure-wlan0.sh、leigod.conf(modules-load.d),以及各配置/伪装文件
 (accelerator.ini、acc_version.ini、sslh-guard.cfg、device.conf、fake_*、
 mirror.conf.example)与 README、.SRCINFO;容器版另有 Dockerfile、
 docker-compose.yml、docker/(entrypoint、fetch-upstream、patch-monitor、
-cleanup)与 DOCKER.md,构建期同样以"下载 + pinned sha256 校验"获取远程文件。
+cleanup)与 DOCKER.md,构建期同样从镜像下载远程文件(容器版默认**不校验**哈希,
+见 DOCKER.md「构建参数与哈希策略」)。
 远程二进制(acc-gw.router.amd64 / xdb / 官方守护脚本)由 source 数组从镜像
 下载并以 pinned sha256 校验,不入库。
 提交 AUR 前建议跑 `namcap PKGBUILD` 做最终检查。

@@ -20,18 +20,20 @@
 #   BindReadOnlyPaths(fake_*, machine-id)     -> compose 的只读绑定
 #   BindPaths(/opt/leigod 可写区 + log)       -> compose 的 ./data 目录
 #
-# 构建期从官方镜像下载三个远程文件, 并以 PKGBUILD 里 pin 死的 sha256 逐个校验:
-# 上游是明文 HTTP 且无签名, 哈希是唯一信任锚点。换镜像/上游发版会导致校验失败,
-# 核对新哈希后改 --build-arg SHA_*(或临时 SKIP_VERIFY=1), 见 DOCKER.md。
+# 构建期从官方镜像下载三个远程文件, **默认不做哈希校验**, 只把实际 sha256 打进构建
+# 日志(策略与理由见 DOCKER.md「构建参数与哈希策略」): 上游是明文 HTTP, 且文件在同一
+# 版本号下就地更新(实测同一 1.2.2.15 下 acc-gw.router.amd64 与 steamdeck_acc_monitor.sh
+# 都被替换过), 钉死的哈希只会在每次上游更新后让构建失败。传非空的 --build-arg SHA_*
+# 可临时钉版本(不匹配即构建失败)。
 
 FROM debian:trixie-slim
 
-# 官方下载源(PKGBUILD 的 source 数组基址)与三个远程文件的 sha256(PKGBUILD 前 3 项)
+# 官方下载源(PKGBUILD 的 source 数组基址)
 ARG LEIGOD_MIRROR=http://119.3.40.126
-ARG SHA_ACC=8e0adbd1b1ce0d37e6588ff222408fed66a3f8954fee27bc37a10e0bf6806d4d
-ARG SHA_XDB=3536000ee9eb3997538cb37a14f90d571979734c48b23b8d548eceac16666273
-ARG SHA_MONITOR=5b0b4948d870adc608c0a674ec4997dc1db650fe65e36548744bcfa63336440e
-ARG SKIP_VERIFY=0
+# 可选哈希钉: 留空(默认) = 不校验, 只打印实际 sha256; 非空 = 必须一致, 否则构建失败
+ARG SHA_ACC=
+ARG SHA_XDB=
+ARG SHA_MONITOR=
 
 ENV DEBIAN_FRONTEND=noninteractive \
     HOME=/home/deck \
